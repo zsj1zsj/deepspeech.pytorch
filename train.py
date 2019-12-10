@@ -224,7 +224,7 @@ if __name__ == '__main__':
     print(model)
     print("Number of parameters: %d" % DeepSpeech.get_param_size(model))
 
-    criterion = torch.nn.CTCLoss(reduction='sum').to(device)
+    criterion = torch.nn.CTCLoss(reduction='sum', zero_infinity=True)
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -247,8 +247,7 @@ if __name__ == '__main__':
             out = out.log_softmax(-1)
 
             float_out = out.float()  # ensure float32 for loss
-            loss = criterion(float_out, targets, output_sizes, target_sizes)
-            loss = loss / inputs.size(0)  # average the loss by minibatch
+            loss = criterion(float_out, targets.to(device).long(), output_sizes.to(device), target_sizes.to(device))
 
             if args.distributed:
                 loss_value = reduce_tensor(loss, args.world_size).item()
@@ -270,6 +269,7 @@ if __name__ == '__main__':
                 print('Skipping grad update')
                 loss_value = 0
 
+            loss_value /= inputs.size(0)
             avg_loss += loss_value
             losses.update(loss_value, inputs.size(0))
 
