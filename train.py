@@ -212,7 +212,6 @@ if __name__ == '__main__':
 
     model, optimizer = amp.initialize(model, optimizer,
                                       opt_level=args.opt_level,
-                                      keep_batchnorm_fp32=args.keep_batchnorm_fp32,
                                       loss_scale=args.loss_scale)
 
     if optim_state is not None:
