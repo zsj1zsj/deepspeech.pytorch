@@ -9,12 +9,6 @@ RUN apt-get install -y git curl ca-certificates bzip2 cmake tree htop bmon iotop
 # install python deps
 RUN pip install cython visdom cffi tensorboardX wget
 
-# install warp-CTC
-ENV CUDA_HOME=/usr/local/cuda
-RUN git clone https://github.com/SeanNaren/warp-ctc.git
-RUN cd warp-ctc; mkdir build; cd build; cmake ..; make
-RUN cd warp-ctc; cd pytorch_binding; python setup.py install
-
 # install pytorch audio
 RUN git clone https://github.com/pytorch/audio.git
 RUN cd audio; python setup.py install

@@ -27,14 +27,6 @@ an Anaconda installation on Ubuntu, with Pytorch 1.0.
 
 Install [PyTorch](https://github.com/pytorch/pytorch#installation) if you haven't already.
 
-Install this fork for Warp-CTC bindings:
-```
-git clone https://github.com/SeanNaren/warp-ctc.git
-cd warp-ctc; mkdir build; cd build; cmake ..; make
-export CUDA_HOME="/usr/local/cuda"
-cd ../pytorch_binding && python setup.py install
-```
-
 Install NVIDIA apex:
 ```
 git clone --recursive https://github.com/NVIDIA/apex.git
