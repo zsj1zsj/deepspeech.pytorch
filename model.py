@@ -4,7 +4,7 @@ from collections import OrderedDict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.parameter import Parameter
+import torch_xla.core.xla_model as xm
 
 supported_rnns = {
     'lstm': nn.LSTM,
@@ -58,8 +58,7 @@ class MaskConv(nn.Module):
         for module in self.seq_module:
             x = module(x)
             mask = torch.BoolTensor(x.size()).fill_(0)
-            if x.is_cuda:
-                mask = mask.cuda()
+            mask.to(device=xm.xla_device())
             for i, length in enumerate(lengths):
                 length = length.item()
                 if (mask[i].size(2) - length) > 0:
