@@ -5,16 +5,15 @@ import random
 import time
 
 import numpy as np
-import torch.distributed as dist
 import torch.utils.data.distributed
-from apex import amp
-from apex.parallel import DistributedDataParallel
 from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
 from decoder import GreedyDecoder
 from logger import VisdomLogger, TensorBoardLogger
 from model import DeepSpeech, supported_rnns
 from test import evaluate
 from utils import reduce_tensor, check_loss
+import torch_xla
+import torch_xla.core.xla_model as xm
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
 parser.add_argument('--train-manifest', metavar='DIR',
@@ -32,7 +31,6 @@ parser.add_argument('--hidden-size', default=800, type=int, help='Hidden size of
 parser.add_argument('--hidden-layers', default=5, type=int, help='Number of RNN layers')
 parser.add_argument('--rnn-type', default='gru', help='Type of the RNN. rnn|gru|lstm are supported')
 parser.add_argument('--epochs', default=70, type=int, help='Number of training epochs')
-parser.add_argument('--cuda', dest='cuda', action='store_true', help='Use cuda to train model')
 parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--max-norm', default=400, type=int, help='Norm cutoff to prevent explosion of gradients')
@@ -76,15 +74,7 @@ parser.add_argument('--rank', default=0, type=int,
 parser.add_argument('--gpu-rank', default=None,
                     help='If using distributed parallel for multi-gpu, sets the GPU for the process')
 parser.add_argument('--seed', default=123456, type=int, help='Seed to generators')
-parser.add_argument('--opt-level', type=str, default='O0',
-                    help='Optimization level to use for training using Apex. Default is FP32 training. '
-                         'O1 is mixed precision and recommended for mixed precision hardware')
-parser.add_argument('--keep-batchnorm-fp32', type=str, default=None)
-parser.add_argument('--loss-scale', default=1,
-                    help='Loss scaling used by Apex. Default is 1 due to warp-ctc not supporting scaling of gradients')
-
 torch.manual_seed(123456)
-torch.cuda.manual_seed_all(123456)
 
 
 def to_np(x):
@@ -115,20 +105,12 @@ if __name__ == '__main__':
 
     # Set seeds for determinism
     torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
 
-    device = torch.device("cuda" if args.cuda else "cpu")
-    args.distributed = args.world_size > 1
+    device = xm.xla_device()
+
     main_proc = True
-    device = torch.device("cuda" if args.cuda else "cpu")
-    if args.distributed:
-        if args.gpu_rank:
-            torch.cuda.set_device(int(args.gpu_rank))
-        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
-                                world_size=args.world_size, rank=args.rank)
-        main_proc = args.rank == 0  # Only the first proc should save models
     save_folder = args.save_folder
     os.makedirs(save_folder, exist_ok=True)  # Ensure save folder exists
 
@@ -210,18 +192,9 @@ if __name__ == '__main__':
     optimizer = torch.optim.SGD(parameters, lr=args.lr,
                                 momentum=args.momentum, nesterov=True, weight_decay=1e-5)
 
-    model, optimizer = amp.initialize(model, optimizer,
-                                      opt_level=args.opt_level,
-                                      loss_scale=args.loss_scale)
-
     if optim_state is not None:
         optimizer.load_state_dict(optim_state)
 
-    if amp_state is not None:
-        amp.load_state_dict(amp_state)
-
-    if args.distributed:
-        model = DistributedDataParallel(model)
     print(model)
     print("Number of parameters: %d" % DeepSpeech.get_param_size(model))
 
@@ -260,10 +233,9 @@ if __name__ == '__main__':
             if valid_loss:
                 optimizer.zero_grad()
                 # compute gradient
-
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
-                torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), args.max_norm)
+                loss.backward()
+                xm.optimizer_step(optimizer, barrier=True)  # Note: Cloud TPU-specific code!
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
                 optimizer.step()
             else:
                 print(error)
