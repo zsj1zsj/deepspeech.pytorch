@@ -5,15 +5,15 @@ import random
 import time
 
 import numpy as np
-import torch.utils.data.distributed
-from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler, DistributedBucketingSampler
+import torch
+import torch_xla.core.xla_model as xm
+
+from data.data_loader import AudioDataLoader, SpectrogramDataset, BucketingSampler
 from decoder import GreedyDecoder
 from logger import VisdomLogger, TensorBoardLogger
 from model import DeepSpeech, supported_rnns
 from test import evaluate
-from utils import reduce_tensor, check_loss
-import torch_xla
-import torch_xla.core.xla_model as xm
+from utils import check_loss
 
 parser = argparse.ArgumentParser(description='DeepSpeech training')
 parser.add_argument('--train-manifest', metavar='DIR',
@@ -64,15 +64,6 @@ parser.add_argument('--no-sortaGrad', dest='no_sorta_grad', action='store_true',
                     help='Turn off ordering of dataset on sequence length for the first epoch.')
 parser.add_argument('--no-bidirectional', dest='bidirectional', action='store_false', default=True,
                     help='Turn off bi-directional RNNs, introduces lookahead convolution')
-parser.add_argument('--dist-url', default='tcp://127.0.0.1:1550', type=str,
-                    help='url used to set up distributed training')
-parser.add_argument('--dist-backend', default='nccl', type=str, help='distributed backend')
-parser.add_argument('--world-size', default=1, type=int,
-                    help='number of distributed processes')
-parser.add_argument('--rank', default=0, type=int,
-                    help='The rank of this process')
-parser.add_argument('--gpu-rank', default=None,
-                    help='If using distributed parallel for multi-gpu, sets the GPU for the process')
 parser.add_argument('--seed', default=123456, type=int, help='Seed to generators')
 torch.manual_seed(123456)
 
@@ -173,11 +164,7 @@ if __name__ == '__main__':
                                        normalize=True, speed_volume_perturb=args.speed_volume_perturb, spec_augment=args.spec_augment)
     test_dataset = SpectrogramDataset(audio_conf=audio_conf, manifest_filepath=args.val_manifest, labels=labels,
                                       normalize=True, speed_volume_perturb=False, spec_augment=False)
-    if not args.distributed:
-        train_sampler = BucketingSampler(train_dataset, batch_size=args.batch_size)
-    else:
-        train_sampler = DistributedBucketingSampler(train_dataset, batch_size=args.batch_size,
-                                                    num_replicas=args.world_size, rank=args.rank)
+    train_sampler = BucketingSampler(train_dataset, batch_size=args.batch_size)
     train_loader = AudioDataLoader(train_dataset,
                                    num_workers=args.num_workers, batch_sampler=train_sampler)
     test_loader = AudioDataLoader(test_dataset, batch_size=args.batch_size,
@@ -223,10 +210,7 @@ if __name__ == '__main__':
             float_out = out.float()  # ensure float32 for loss
             loss = criterion(float_out, targets.to(device).long(), output_sizes.to(device), target_sizes.to(device))
 
-            if args.distributed:
-                loss_value = reduce_tensor(loss, args.world_size).item()
-            else:
-                loss_value = loss.item()
+            loss_value = loss.item()
 
             # Check to ensure valid loss was calculated
             valid_loss, error = check_loss(loss, loss_value)
@@ -258,7 +242,7 @@ if __name__ == '__main__':
             if args.checkpoint_per_batch > 0 and i > 0 and (i + 1) % args.checkpoint_per_batch == 0 and main_proc:
                 file_path = '%s/deepspeech_checkpoint_epoch_%d_iter_%d.pth' % (save_folder, epoch + 1, i + 1)
                 print("Saving checkpoint model to %s" % file_path)
-                torch.save(DeepSpeech.serialize(model, optimizer=optimizer, amp=amp, epoch=epoch, iteration=i,
+                torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, iteration=i,
                                                 loss_results=loss_results,
                                                 wer_results=wer_results, cer_results=cer_results, avg_loss=avg_loss),
                            file_path)
@@ -303,7 +287,7 @@ if __name__ == '__main__':
 
         if main_proc and args.checkpoint:
             file_path = '%s/deepspeech_%d.pth.tar' % (save_folder, epoch + 1)
-            torch.save(DeepSpeech.serialize(model, optimizer=optimizer, amp=amp, epoch=epoch, loss_results=loss_results,
+            torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, loss_results=loss_results,
                                             wer_results=wer_results, cer_results=cer_results),
                        file_path)
         # anneal lr
@@ -313,7 +297,7 @@ if __name__ == '__main__':
 
         if main_proc and (best_wer is None or best_wer > wer):
             print("Found better validated model, saving to %s" % args.model_path)
-            torch.save(DeepSpeech.serialize(model, optimizer=optimizer, amp=amp, epoch=epoch, loss_results=loss_results,
+            torch.save(DeepSpeech.serialize(model, optimizer=optimizer, epoch=epoch, loss_results=loss_results,
                                             wer_results=wer_results, cer_results=cer_results)
                        , args.model_path)
             best_wer = wer
