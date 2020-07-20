@@ -11,7 +11,7 @@ from deepspeech_pytorch.data.utils import create_manifest
 
 parser = argparse.ArgumentParser(description='Downloads and processes Mozilla Common Voice dataset.')
 parser = add_data_opts(parser)
-parser.add_argument("--target-dir", default='zh-CN/', type=str, help="Directory to store the dataset.")
+parser.add_argument("--target-dir", default='CommonVoice_dataset_zh_cn/', type=str, help="Directory to store the dataset.")
 parser.add_argument("--tar-path", type=str, help="Path to the Common Voice *.tar file if downloaded (Optional).")
 parser.add_argument('--files-to-process', default="train.tsv,test.tsv",
                     type=str, help='list of *.tsv file names to process')
@@ -56,7 +56,7 @@ def main():
     target_dir = args.target_dir
     os.makedirs(target_dir, exist_ok=True)
 
-    target_unpacked_dir = os.path.join(target_dir, "cv-corpus-5-2020-06-22/")
+    target_unpacked_dir = os.path.join(target_dir, "CV_unpacked")
     os.makedirs(target_unpacked_dir, exist_ok=True)
 
     if args.tar_path and os.path.exists(args.tar_path):
@@ -73,7 +73,7 @@ def main():
     tar.close()
 
     for csv_file in args.files_to_process.split(','):
-        convert_to_wav(os.path.join(target_unpacked_dir, 'zh-CN/', csv_file),
+        convert_to_wav(os.path.join(target_unpacked_dir, 'cv-corpus-5-2020-06-22/zh-CN/', csv_file),
                        os.path.join(target_dir, os.path.splitext(csv_file)[0]))
 
     print('Creating manifests...')
