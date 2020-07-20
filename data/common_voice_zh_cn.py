@@ -38,9 +38,9 @@ def convert_to_wav(csv_file, target_dir):
         text = text.strip().upper()
         with open(os.path.join(txt_dir, file_name + '.txt'), 'w') as f:
             f.write(text)
-        mp3path = 'clips/'
+        mp3path = 'clips'
         cmd = "sox {} -r {} -b 16 -c 1 {}".format(
-            os.path.join(mp3path, file_path),
+            os.path.join(path_to_data,mp3path, file_path),
             args.sample_rate,
             os.path.join(wav_dir, file_name + '.wav'))
         subprocess.call([cmd], shell=True)
