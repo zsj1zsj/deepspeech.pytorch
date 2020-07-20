@@ -38,16 +38,17 @@ def convert_to_wav(csv_file, target_dir):
         text = text.strip().upper()
         with open(os.path.join(txt_dir, file_name + '.txt'), 'w') as f:
             f.write(text)
+        mp3path = 'clips/'
         cmd = "sox {} -r {} -b 16 -c 1 {}".format(
-            os.path.join(path_to_data, file_path),
+            os.path.join(mp3path, file_path),
             args.sample_rate,
             os.path.join(wav_dir, file_name + '.wav'))
         subprocess.call([cmd], shell=True)
 
     print('Converting mp3 to wav for {}.'.format(csv_file))
     with open(csv_file) as csvfile:
-        data = [(row['path'], row['sentence']) for row in reader]
         reader = csv.DictReader(csvfile)
+        data = [(row['path'], row['sentence']) for row in reader]        
         with ThreadPool(10) as pool:
             pool.map(process, data)
 
