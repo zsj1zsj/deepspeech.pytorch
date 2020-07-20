@@ -46,8 +46,8 @@ def convert_to_wav(csv_file, target_dir):
         subprocess.call([cmd], shell=True)
 
     print('Converting mp3 to wav for {}.'.format(csv_file))
-    with open(csv_file) as csvfile:
-        reader = csv.DictReader(csvfile)
+    with open(csv_file,encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile, delimiter='\t')
         data = [(row['path'], row['sentence']) for row in reader]        
         with ThreadPool(10) as pool:
             pool.map(process, data)
